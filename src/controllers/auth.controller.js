@@ -31,17 +31,17 @@ export const login = async (req, res, next) => {
         const { email, password } = req.body
 
         if (!email || !password) {
-            return res.status(400).send({ message: "Username or password are required" })
+            return res.status(401).send({ message: "Username or password are required" })
         };
 
         const findUser = await User.findOne({ email }).select('+password');
         const isMatch = await comparePassword(password, findUser.password);
 
         if (!findUser || !isMatch) {
-            return res.status(400).send({ message: "อีเมลหรือรหัสผ่านไม่ถูกต้อง" })
+            return res.status(401).send({ message: "อีเมลหรือรหัสผ่านไม่ถูกต้อง" })
         };
 
-        const token = jwt.sign({ userId: findUser._id }, process.env.JWT_SECRET, {
+        const token = jwt.sign({ id: findUser._id , role: findUser.role }, process.env.JWT_SECRET, {
             expiresIn: '1h',
         });
 
@@ -64,7 +64,7 @@ export const login = async (req, res, next) => {
                 username: findUser.username,
                 email: findUser.email,
                 role: findUser.role,
-            },
+            },token
         });
 
 
@@ -72,3 +72,45 @@ export const login = async (req, res, next) => {
         next(err)
     }
 }
+
+export const logout = async (req ,res ,next) => {
+    const isProd = process.env.NODE_ENV === 'production';
+
+        res.clearCookie('accessToken', {
+        httpOnly: true,
+        secure: isProd, // Only send over HTTPS in production
+        sameSite: isProd ? "none" : "lax",
+        path: "/",
+    });
+
+    return res.status(200).json({
+        success: true,
+        message: 'Logged out successfully',
+    });
+};
+
+export const checkUserState = async (req, res, next) => {
+    try {
+        const userId = req.user.userId;
+        const user = await User.findById(userId);
+
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                message: "User not found !",
+            });
+        }
+        return res.status(200).json({
+            success: true,
+            data: {
+                _id: user._id,
+                username: user.username,
+                email: user.email,
+                role: user.role,
+            },
+        });
+
+    } catch (err) {
+        next(err);
+    }
+};
