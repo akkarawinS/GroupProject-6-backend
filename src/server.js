@@ -1,17 +1,32 @@
 import express from 'express';
 import cookieParser from 'cookie-parser'
-
+import cors from 'cors';
+import helmet from 'helmet';
 
 import { connectDB } from './config/mongodb.js'
 import { router as userRouter } from './routes/users.routes.js'
+import { limiter } from './middlewares/ratelimit.middleware.js';
 
 
 const app = express();
 
+const allowedOrigins = process.env.CORS_ORIGIN_URL
+  ?.split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean) ?? [];
+
+const corsOptions = { origin: allowedOrigins, credentials: true };
+
+app.use(helmet());
 app.use(express.json());
 app.use(cookieParser());
+app.use(cors(corsOptions));
+app.use(limiter);
 
 connectDB();
+
+
+app.use('/', userRouter);
 
 //Centralized error handling middleware
 app.use((err, req, res, next) => {
@@ -26,7 +41,6 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.use('/', userRouter);
 
 
 
