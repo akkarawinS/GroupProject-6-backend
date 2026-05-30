@@ -13,10 +13,14 @@ const userSchema = new mongoose.Schema(
             match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, "Invalid email format"],
             index: true
         },
-        password: { type: String, required: true, minlength: 8, maxlength: 24, select: false },
+        password: { type: String, required: true, minlength: 8, select: false },
         role: { type: String, enum: ["user", "admin", "artist"], default: "user" },
-        display_name: { type: String },
+        display_name: { type: String , trim: true},
         profile_picture: { public_id: { type: String , default: null}, url: { type: String , default: null}},
+        bio: {type: String , maxlength: [250, "Bio must be less than 250 characters"],default:"" },
+        collection: [{ product_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Products'}}],
+        followingArtist: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+        wishlist: [ { product_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Products' }}]
     }, { timestamps: true },
 );
 
