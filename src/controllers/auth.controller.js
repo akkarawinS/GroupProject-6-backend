@@ -43,7 +43,7 @@ export const login = async (req, res, next) => {
         // Check password 
         const isMatch = await comparePassword(password, findUser.password);
         if (!isMatch) {
-            return register.status(401).json({ success: false , message: "Invalid email or password" })
+            return res.status(401).json({ success: false , message: "Invalid email or password" })
         }
 
         const token = jwt.sign({ user_Id: findUser._id, role: findUser.role }, process.env.JWT_SECRET, {

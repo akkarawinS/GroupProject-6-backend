@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authUser } from '../middlewares/authen.middleware.js';
-import { isArtistOrAdmin } from '../middlewares/artistOrAdminCheck.middleware.js';
+import { isArtistOrAdmin } from '../middlewares/roleCheck.middleware.js';
 import { getAllProductInfo, getProductById } from '../controllers/product.controller.js';
 
 export const router = Router();

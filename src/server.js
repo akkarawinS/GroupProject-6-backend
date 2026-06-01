@@ -6,6 +6,7 @@ import helmet from 'helmet';
 import { connectDB } from './config/mongodb.js'
 import { router as userRouter } from './routes/users.routes.js'
 import { router as trackRouter } from './routes/tracks.routes.js'
+import { router as adminRouter } from './routes/admin.routes.js'
 import { limiter } from './middlewares/ratelimit.middleware.js';
 
 
@@ -29,6 +30,7 @@ connectDB();
 
 app.use('/', userRouter);
 app.use('/', trackRouter);
+app.use('/', adminRouter);
 
 //Centralized error handling middleware
 app.use((err, req, res, next) => {
