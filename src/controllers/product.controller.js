@@ -1,10 +1,10 @@
 import { Product } from '../models/product.model.js'
 import { Track } from '../models/track.model.js';
-import { uploadAudioToCloudinary, buildPreviewUrl } from '../utils/cloudinaryAudio.js';
+import { uploadAudioToCloudinary, uploadImageToCloudinary } from '../utils/cloudinaryUpload.js';
 
 export const getAllProductInfo = async (req, res, next) => {
     try {
-        const product = await Product.find();
+        const product = await Product.find().populate('tracks');
 
         return res.status(200).json({ success: true, data: product });
     }
@@ -15,7 +15,7 @@ export const getAllProductInfo = async (req, res, next) => {
 
 export const getProductById = async (req, res, next) => {
     try {
-        const product = await Product.findById(req.params.productId);
+        const product = await Product.findById(req.params.productId).populate('tracks');
 
         if (!product) {
             return res.status(404).json({ success: false, error: 'Product not found' });
@@ -33,6 +33,14 @@ export const createProduct = async (req, res, next) => {
 
         const audioFile = req.files?.audio?.[0];
         const coverFile = req.files?.cover?.[0];
+
+        if (!audioFile) {
+            return res.status(400).json({ success: false, message: 'Audio file is required' });
+        }
+
+        if (!coverFile) {
+            return res.status(400).json({ success: false, message: 'Cover image is required' });
+        }
 
         const audioUpload = await uploadAudioToCloudinary(audioFile.buffer);
         const coverUpload = await uploadImageToCloudinary(coverFile.buffer);

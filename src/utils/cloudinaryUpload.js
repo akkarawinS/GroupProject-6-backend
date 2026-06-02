@@ -17,6 +17,22 @@ export const uploadAudioToCloudinary = (fileBuffer) => {
     });
 };
 
+export const uploadImageToCloudinary = (fileBuffer) => {
+    return new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+            {
+                resource_type: 'image',
+                folder: 'audlist/products',
+            },
+            (error, result) => {
+                if (error) return reject(error);
+                return resolve(result);
+            },
+        );
+
+        uploadStream.end(fileBuffer);
+    });
+};
 
 export const buildPreviewUrl = (publicId, startSec, durationSec) => {
     return cloudinary.url(publicId, {
