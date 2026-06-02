@@ -18,9 +18,14 @@ const userSchema = new mongoose.Schema(
         display_name: { type: String, trim: true },
         profile_picture: { public_id: { type: String, default: null }, url: { type: String, default: null } },
         bio: { type: String, maxlength: [250, "Bio must be less than 250 characters"], default: "" },
-        collection: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Products', purchasedAt: { type: Date, default: Date.now } }],
+        collection: [{
+            product_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Products', required: true },
+            purchasedAt: { type: Date, default: Date.now }
+        }],
         followingArtist: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-        wishlist: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Products' }]
+        wishlist: [{
+            product_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Products', required: true }
+        }]
     }, { timestamps: true },
 );
 

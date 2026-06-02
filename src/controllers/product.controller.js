@@ -1,4 +1,6 @@
 import { Product } from '../models/product.model.js'
+import { Track } from '../models/track.model.js';
+import { uploadAudioToCloudinary, buildPreviewUrl } from '../utils/cloudinaryAudio.js';
 
 export const getAllProductInfo = async (req, res, next) => {
     try {
@@ -27,12 +29,42 @@ export const getProductById = async (req, res, next) => {
 
 export const createProduct = async (req, res, next) => {
     try {
-        const { type,title,description,price,minPrice,coverUrl,nameYourPrice,releasedDate} = req.body || {};
-        const product = await Product.create({artist: req.user.user_Id,type,title, slug:title,description,price,minPrice,coverUrl,nameYourPrice,releasedDate,status});
+        const { type, title, description, price, minPrice, stock, nameYourPrice, releaseDate } = req.body || {};
 
-        return res.status(201).json({ success:true,data: product});
+        const audioFile = req.files?.audio?.[0];
+        const coverFile = req.files?.cover?.[0];
 
-    }catch(err){
+        const audioUpload = await uploadAudioToCloudinary(audioFile.buffer);
+        const coverUpload = await uploadImageToCloudinary(coverFile.buffer);
+
+        const durationSec = Math.ceil(audioUpload.duration);
+
+        const track = await Track.create({ artist: req.user.user_Id, title, durationSec, audioUrl: { public_id: audioUpload.public_id, url: audioUpload.secure_url, } });
+
+        const productData = {
+            artist: req.user.user_Id,
+            type, title, slug: title,
+            description,
+            price,
+            minPrice,
+            coverUrl: {
+                public_id: coverUpload.public_id,
+                url: coverUpload.secure_url,
+            },
+            nameYourPrice,
+            releaseDate,
+            tracks: [track._id]
+        }
+
+        if (type === 'merch') {
+            productData.stock = stock;
+        }
+
+        const product = await Product.create(productData);
+
+        return res.status(201).json({ success: true, data: product });
+
+    } catch (err) {
         next(err)
     }
 }

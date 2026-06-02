@@ -5,7 +5,7 @@ import { getAllProductInfo, getProductById } from '../controllers/product.contro
 
 export const router = Router();
 
-router.get('products', getAllProductInfo);
+router.get('/products', getAllProductInfo);
 
 router.get('/products/:productId', getProductById);
 

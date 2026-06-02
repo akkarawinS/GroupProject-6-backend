@@ -10,7 +10,7 @@ const TrackSchema = new mongoose.Schema(
             url: { type: String, required: true }
         },
         previewStartSec: { type: Number, default: 30, min: 0 },
-        previewDurationSec: { type: Number, default: 30, min: 1 },
+        previewDurationSec: { type: Number, default: 15, min: 1 },
         isStreamable: { type: Boolean, default: true }
     }, { timestamps: true },
 )
