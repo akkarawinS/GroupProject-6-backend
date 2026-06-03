@@ -3,32 +3,12 @@ import { Product } from '../models/product.model.js'
 import { Track } from '../models/track.model.js';
 import { uploadAudioToCloudinary, uploadImageToCloudinary } from '../utils/cloudinaryUpload.js';
 import { formatProduct } from '../utils/productFormatter.js'
+import { createUniqueProductSlug } from "../utils/productSlug.js";
 
 export const productPopulate = [
     { path: 'artist', select: 'username display_name profile_picture bio role' },
     { path: 'tracks' },
 ];
-
-const slugify = (value) => {
-    return String(value)
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '') || 'product';
-};
-
-const createUniqueProductSlug = async (title) => {
-    const baseSlug = slugify(title);
-    let slug = baseSlug;
-    let counter = 2;
-
-    while (await Product.exists({ slug })) {
-        slug = `${baseSlug}-${counter}`;
-        counter += 1;
-    }
-
-    return slug;
-};
 
 
 export const getAllProductInfo = async (req, res, next) => {
@@ -103,7 +83,9 @@ export const createProduct = async (req, res, next) => {
 
         const product = await Product.create(productData);
 
-        return res.status(201).json({ success: true, data: product });
+        const createdProduct = await Product.findById(product._id).populate(productPopulate);
+
+        return res.status(201).json({ success: true, data: formatProduct(createdProduct) });
 
     } catch (err) {
         next(err)
