@@ -1,12 +1,41 @@
+import mongoose from 'mongoose';
 import { Product } from '../models/product.model.js'
 import { Track } from '../models/track.model.js';
 import { uploadAudioToCloudinary, uploadImageToCloudinary } from '../utils/cloudinaryUpload.js';
+import { formatProduct } from '../utils/productFormatter.js'
+
+export const productPopulate = [
+    { path: 'artist', select: 'username display_name profile_picture bio role' },
+    { path: 'tracks' },
+];
+
+const slugify = (value) => {
+    return String(value)
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'product';
+};
+
+const createUniqueProductSlug = async (title) => {
+    const baseSlug = slugify(title);
+    let slug = baseSlug;
+    let counter = 2;
+
+    while (await Product.exists({ slug })) {
+        slug = `${baseSlug}-${counter}`;
+        counter += 1;
+    }
+
+    return slug;
+};
+
 
 export const getAllProductInfo = async (req, res, next) => {
     try {
-        const product = await Product.find().populate('tracks');
+        const product = await Product.find({ deletedAt: null }).populate(productPopulate);
 
-        return res.status(200).json({ success: true, data: product });
+        return res.status(200).json({ success: true, data: product.map(formatProduct) });
     }
     catch (err) {
         next(err);
@@ -15,12 +44,14 @@ export const getAllProductInfo = async (req, res, next) => {
 
 export const getProductById = async (req, res, next) => {
     try {
-        const product = await Product.findById(req.params.productId).populate('tracks');
+        const { productId } = req.params;
+        const query = mongoose.Types.ObjectId.isValid(productId) ? { _id: productId } : { slug: productId };
+        const product = await Product.findOne(query).populate(productPopulate);
 
         if (!product) {
             return res.status(404).json({ success: false, error: 'Product not found' });
         }
-        return res.status(200).json({ success: true, data: product });
+        return res.status(200).json({ success: true, data: formatProduct(product) });
     }
     catch (err) {
         next(err);
@@ -49,9 +80,11 @@ export const createProduct = async (req, res, next) => {
 
         const track = await Track.create({ artist: req.user.user_Id, title, durationSec, audioUrl: { public_id: audioUpload.public_id, url: audioUpload.secure_url, } });
 
+        const slug = await createUniqueProductSlug(title);
+
         const productData = {
             artist: req.user.user_Id,
-            type, title, slug: title,
+            type, title, slug,
             description,
             price,
             minPrice,
