@@ -1,11 +1,16 @@
 import { Router } from 'express';
-import { checkUserState, login, logout, register } from '../controllers/auth.controller.js'
+import { artistRegister, checkUserState, fanRegister, login, logout } from '../controllers/auth.controller.js'
 import { authUser } from '../middlewares/authen.middleware.js';
 import { getUserProfile, toggleFollowArtist, toggleWishlist, updateUserProfile } from '../controllers/user.controller.js';
 
 export const router = Router()
 
-router.post('/auth/register', register);
+//Register
+router.post('/auth/register/fan', fanRegister);
+
+router.post('/auth/register/artist', artistRegister);
+
+
 
 router.post('/auth/login' , login);
 
