@@ -21,7 +21,7 @@ export const fanRegister = async (req, res, next) => {
             return res.status(400).json({ success: false, message: 'this username already exist' })
         };
 
-        const newUser = await User.create({ username, email, first_name, last_name, password, display_name: username, })
+        const newUser = await User.create({ username, email, first_name, last_name, password, display_name: username,role: 'user' })
         res.status(201).json({ success: true, data: newUser })
 
     } catch (error) {
