@@ -1,5 +1,8 @@
 import { User } from '../models/user.model.js';
 import { Product } from '../models/product.model.js'
+import { comparePassword } from '../utils/comparePassword.js'
+
+import bcrypt from 'bcrypt'
 import mongoose from 'mongoose';
 
 export const getUserProfile = async (req, res, next) => {
@@ -46,6 +49,32 @@ export const updateUserProfile = async (req, res, next) => {
     }
 
 }
+
+export const changePassword = async (req, res, next) => {
+    try {
+        const { currentPassword, newPassword } = req.body;
+
+        if (!currentPassword || !newPassword) {
+            return res.status(400).json({ success: false, message: 'All field are required!' });
+        }
+        const user = await User.findById(req.user.user_Id).select('+password');
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+        const isMatch = await comparePassword(currentPassword, user.password);
+        if (!isMatch) {
+            return res.status(401).json({ success: false, message: "Incorrect  password" })
+        }
+
+        user.password = newPassword;
+        await user.save();
+
+        return res.status(200).json({ message: 'Password updated successfully.' });
+    } catch (err) {
+        next(err)
+    }
+}
+
 
 export const toggleFollowArtist = async (req, res, next) => {
 

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { artistRegister, checkUserState, fanRegister, login, logout } from '../controllers/auth.controller.js'
 import { authUser } from '../middlewares/authen.middleware.js';
-import { getUserProfile, toggleFollowArtist, toggleWishlist, updateUserProfile } from '../controllers/user.controller.js';
+import { changePassword, getUserProfile, toggleFollowArtist, toggleWishlist, updateUserProfile } from '../controllers/user.controller.js';
 
 export const router = Router()
 
@@ -31,4 +31,5 @@ router.patch('/artists/:artistId/follow',authUser,toggleFollowArtist);
 //add item to wishlist tooggle route;
 router.patch('/products/:productId/wishlist',authUser,toggleWishlist);
 
- 
+//Change passworrd
+router.patch('/profile/password', authUser, changePassword);
