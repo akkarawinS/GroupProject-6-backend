@@ -28,12 +28,13 @@ export const getUserProfile = async (req, res, next) => {
 
 export const updateUserProfile = async (req, res, next) => {
     try {
-        const { display_name, profile_picture, banner_picture } = req.body || {};
+        const { display_name, profile_picture, banner_picture, bio } = req.body || {};
         const update = {};
         const profileFile = req.files?.profile_picture?.[0];
         const bannerFile = req.files?.banner_picture?.[0];
 
         if (display_name !== undefined) update.display_name = display_name;
+        if (bio !== undefined) update.bio = bio;
 
         if (profileFile) {
             const upload = await uploadImageToCloudinary(profileFile.buffer);
