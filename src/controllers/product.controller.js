@@ -29,7 +29,7 @@ export const getProductById = async (req, res, next) => {
         const product = await Product.findOne(query).populate(productPopulate);
 
         if (!product) {
-            return res.status(404).json({ success: false, error: 'Product not found' });
+            return res.status(404).json({ success: false, message: 'Product not found' });
         }
         return res.status(200).json({ success: true, data: formatProduct(product) });
     }
@@ -38,9 +38,32 @@ export const getProductById = async (req, res, next) => {
     }
 };
 
-export const createProduct = async (req, res, next) => {
+export const createSingleProduct = async (req, res, next) => {
+    const session = await mongoose.startSession();
+
     try {
-        const { type, title, description, price, minPrice, stock, nameYourPrice, releaseDate } = req.body || {};
+        const { title, description, price, nameYourPrice } = req.body || {};
+
+        const isNameYourPrice = nameYourPrice === 'true' || nameYourPrice === true;
+
+        if (!title) {
+            return res.status(400).json({ success: false, message: 'Title is required' });
+        }
+
+        if (!description) {
+            return res.status(400).json({ success: false, message: 'Description is required' });
+        }
+
+        if (price === undefined || price === '') {
+            return res.status(400).json({ success: false, message: 'Price is required' });
+        }
+
+        const productPrice = Number(price);
+        const productMinPrice = isNameYourPrice ? productPrice : undefined;
+
+        if (!Number.isFinite(productPrice) || productPrice < 0) {
+            return res.status(400).json({ success: false, message: 'Price must be a valid number' });
+        }
 
         const audioFile = req.files?.audio?.[0];
         const coverFile = req.files?.cover?.[0];
@@ -52,42 +75,231 @@ export const createProduct = async (req, res, next) => {
         if (!coverFile) {
             return res.status(400).json({ success: false, message: 'Cover image is required' });
         }
-
         const audioUpload = await uploadAudioToCloudinary(audioFile.buffer);
         const coverUpload = await uploadImageToCloudinary(coverFile.buffer);
 
-        const durationSec = Math.ceil(audioUpload.duration);
+        let createdProduct;
 
-        const track = await Track.create({ artist: req.user.user_Id, title, durationSec, audioUrl: { public_id: audioUpload.public_id, url: audioUpload.secure_url, } });
+        await session.withTransaction(async () => {
+            const durationSec = Math.ceil(audioUpload.duration);
+            const slug = await createUniqueProductSlug(title);
 
+            const [track] = await Track.create(
+                [
+                    {
+                        artist: req.user.user_Id,
+                        title,
+                        durationSec,
+                        audioUrl: {
+                            public_id: audioUpload.public_id,
+                            url: audioUpload.secure_url,
+                        },
+                    },
+                ],
+                { session },
+            );
+            const [product] = await Product.create(
+                [
+                    {
+                        artist: req.user.user_Id,
+                        type: 'single',
+                        title,
+                        slug,
+                        description,
+                        price: productPrice,
+                        minPrice: isNameYourPrice ? productMinPrice : undefined,
+                        coverUrl: {
+                            public_id: coverUpload.public_id,
+                            url: coverUpload.secure_url,
+                        },
+                        nameYourPrice: isNameYourPrice,
+                        tracks: [track._id],
+                    },
+                ],
+                { session },
+            );
+
+            createdProduct = product;
+
+        });
+        const populatedProduct = await Product.findById(createdProduct._id).populate(productPopulate);
+
+        return res.status(201).json({ success: true, data: formatProduct(populatedProduct) });
+
+    } catch (err) {
+        next(err);
+    } finally {
+        await session.endSession();
+    }
+};
+
+export const createAlbumProduct = async (req, res, next) => {
+    const session = await mongoose.startSession();
+
+    try {
+        const { title, description, price, nameYourPrice, trackTitles } = req.body || {};
+
+        const isNameYourPrice = nameYourPrice === 'true' || nameYourPrice === true;
+
+        if (!title) {
+            return res.status(400).json({ success: false, message: 'Title is required' });
+        }
+
+        if (!description) {
+            return res.status(400).json({ success: false, message: 'Description is required' });
+        }
+
+        if (price === undefined || price === '') {
+            return res.status(400).json({ success: false, message: 'Price is required' });
+        }
+
+        const productPrice = Number(price);
+        const productMinPrice = isNameYourPrice ? productPrice : undefined;
+
+        if (!Number.isFinite(productPrice) || productPrice < 0) {
+            return res.status(400).json({ success: false, message: 'Price must be a valid number' });
+        }
+
+        const audioFiles = req.files?.audio || [];
+        const coverFile = req.files?.cover?.[0];
+        let requestedTrackTitles = [];
+
+        if (trackTitles) {
+            try {
+                requestedTrackTitles = JSON.parse(trackTitles);
+            } catch (err) {
+                return res.status(400).json({ success: false, message: 'Track titles must be valid JSON' });
+            }
+
+            if (!Array.isArray(requestedTrackTitles)) {
+                return res.status(400).json({ success: false, message: 'Track titles must be an array' });
+            }
+        }
+
+        if (audioFiles.length < 2) {
+            return res.status(400).json({
+                success: false,
+                message: 'Add at least 2 tracks for an album',
+            });
+        }
+        if (!coverFile) {
+            return res.status(400).json({ success: false, message: 'Cover image is required' });
+        }
+        const audioUploads = await Promise.all(
+            audioFiles.map((file) => uploadAudioToCloudinary(file.buffer)),
+        );
+        const coverUpload = await uploadImageToCloudinary(coverFile.buffer);
+
+
+        let createdProduct;
+
+        await session.withTransaction(async () => {
+            const slug = await createUniqueProductSlug(title);
+
+            const tracksData = audioUploads.map((audioUpload, index) => ({
+                artist: req.user.user_Id,
+                title: (requestedTrackTitles[index] || audioFiles[index].originalname
+                    .replace(/\.[^/.]+$/, '')
+                    .replace(/[_-]+/g, ' ')
+                    .trim()),
+                durationSec: Math.ceil(audioUpload.duration),
+                audioUrl: {
+                    public_id: audioUpload.public_id,
+                    url: audioUpload.secure_url,
+                },
+            }));
+
+            const tracks = await Track.create(tracksData, { session });
+
+            const [product] = await Product.create(
+                [
+                    {
+                        artist: req.user.user_Id,
+                        type: 'album',
+                        title,
+                        slug,
+                        description,
+                        price: productPrice,
+                        minPrice: isNameYourPrice ? productMinPrice : undefined,
+                        coverUrl: {
+                            public_id: coverUpload.public_id,
+                            url: coverUpload.secure_url,
+                        },
+                        nameYourPrice: isNameYourPrice,
+                        tracks: tracks.map((track) => track._id),
+                    },
+                ],
+                { session },
+            );
+
+            createdProduct = product;
+
+        });
+        const populatedProduct = await Product.findById(createdProduct._id).populate(productPopulate);
+
+        return res.status(201).json({ success: true, data: formatProduct(populatedProduct) });
+
+    } catch (err) {
+        next(err);
+    } finally {
+        await session.endSession();
+    }
+}
+
+export const createMerchProduct = async (req, res, next) => {
+    try {
+        const { title, description, price, merchType } = req.body || {};
+
+        if (!title) {
+            return res.status(400).json({ success: false, message: 'Title is required' });
+        }
+
+        if (!description) {
+            return res.status(400).json({ success: false, message: 'Description is required' });
+        }
+
+        if (price === undefined || price === '') {
+            return res.status(400).json({ success: false, message: 'Price is required' });
+        }
+
+        if (!merchType) {
+            return res.status(400).json({ success: false, message: 'Merch type is required' });
+        }
+
+        const productPrice = Number(price);
+
+        if (!Number.isFinite(productPrice) || productPrice < 0) {
+            return res.status(400).json({ success: false, message: 'Price must be a valid number' });
+        }
+
+        const coverFile = req.files?.cover?.[0];
+
+        if (!coverFile) {
+            return res.status(400).json({ success: false, message: 'Product image is required' });
+        }
+
+        const coverUpload = await uploadImageToCloudinary(coverFile.buffer);
         const slug = await createUniqueProductSlug(title);
 
-        const productData = {
+        const product = await Product.create({
             artist: req.user.user_Id,
-            type, title, slug,
+            type: 'merch',
+            merchType,
+            title,
+            slug,
             description,
-            price,
-            minPrice,
+            price: productPrice,
             coverUrl: {
                 public_id: coverUpload.public_id,
                 url: coverUpload.secure_url,
             },
-            nameYourPrice,
-            releaseDate,
-            tracks: [track._id]
-        }
-
-        if (type === 'merch') {
-            productData.stock = stock;
-        }
-
-        const product = await Product.create(productData);
+            nameYourPrice: false,
+        });
 
         const createdProduct = await Product.findById(product._id).populate(productPopulate);
 
         return res.status(201).json({ success: true, data: formatProduct(createdProduct) });
-
     } catch (err) {
-        next(err)
+        next(err);
     }
-}
+};

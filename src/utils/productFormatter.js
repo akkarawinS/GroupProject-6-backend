@@ -40,6 +40,7 @@ export const formatProduct = (product) => {
       artist_id: product.artist?._id ?? product.artist,
       artist: formatArtist(product.artist),
       type: product.type,
+      merch_type: product.merchType,
       title: product.title,
       slug: product.slug,
       description: product.description,
