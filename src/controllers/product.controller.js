@@ -1,21 +1,211 @@
 import mongoose from 'mongoose';
 import { Product } from '../models/product.model.js'
 import { Track } from '../models/track.model.js';
+import { User } from '../models/user.model.js';
 import { uploadAudioToCloudinary, uploadImageToCloudinary } from '../utils/cloudinaryUpload.js';
 import { formatProduct, formatPublicProduct } from '../utils/productFormatter.js'
 import { createUniqueProductSlug } from "../utils/productSlug.js";
 
 export const productPopulate = [
-    { path: 'artist', select: 'username display_name profile_picture bio role' },
+    { path: 'artist', select: 'username display_name profile_picture banner_picture bio genre role' },
     { path: 'tracks' },
 ];
 
+const MERCH_TYPES = ['tshirt', 'vinyl', 'cd', 'cassette', 'poster', 'snapback', 'tote'];
 
+const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const unslug = (value) => String(value || '').trim().replace(/[-_]+/g, ' ');
+
+const toPositiveInt = (value, fallback, max) => {
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+    return Math.min(parsed, max);
+};
+
+const toNumberFilter = (value) => {
+    if (value === undefined || value === '') return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+};
+
+const parseJsonArray = (value, fieldName) => {
+    if (!value) return [];
+    try {
+        const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+        if (!Array.isArray(parsed)) {
+            const err = new Error(`${fieldName} must be an array`);
+            err.status = 400;
+            throw err;
+        }
+        return parsed;
+    } catch (err) {
+        if (err.status) throw err;
+        const error = new Error(`${fieldName} must be valid JSON`);
+        error.status = 400;
+        throw error;
+    }
+};
+
+const normalizeMerchVariants = (variants) => {
+    return variants.map((variant, index) => {
+        const stockValue = variant.stock ?? variant.stockQuantity ?? variant.stock_quantity;
+        const stockQuantity = Number(stockValue);
+
+        if (!Number.isInteger(stockQuantity) || stockQuantity < 0) {
+            const err = new Error(`Variant ${index + 1} stock must be a non-negative integer`);
+            err.status = 400;
+            throw err;
+        }
+
+        return {
+            variantId: variant.variantId || variant.variant_id || variant.sku || `variant-${index + 1}`,
+            size: variant.size || '',
+            color: variant.color || '',
+            stockQuantity,
+            sku: variant.sku || '',
+        };
+    });
+};
+
+const getSortOption = (sort) => {
+    switch (sort) {
+        case 'oldest':
+            return { createdAt: 1 };
+        case 'price_asc':
+            return { price: 1, createdAt: -1 };
+        case 'price_desc':
+            return { price: -1, createdAt: -1 };
+        case 'title_asc':
+            return { title: 1 };
+        case 'title_desc':
+            return { title: -1 };
+        case 'newest':
+        default:
+            return { createdAt: -1 };
+    }
+};
+
+const buildProductQuery = async (queryParams) => {
+    const { type, category, merchType, artist, genre, q, search, minPrice, maxPrice } = queryParams;
+    const query = { deletedAt: null, status: 'published' };
+    const selectedType = type || category;
+
+    if (selectedType && selectedType !== 'all') {
+        if (selectedType === 'digital') {
+            query.type = { $in: ['single', 'album'] };
+        } else if (MERCH_TYPES.includes(selectedType)) {
+            query.type = 'merch';
+            query.merchType = selectedType;
+        } else if (['single', 'album', 'merch'].includes(selectedType)) {
+            query.type = selectedType;
+        }
+    }
+
+    if (merchType) {
+        if (!MERCH_TYPES.includes(merchType)) {
+            const err = new Error('Invalid merch type');
+            err.status = 400;
+            throw err;
+        }
+        query.type = 'merch';
+        query.merchType = merchType;
+    }
+
+    const minPriceNumber = toNumberFilter(minPrice);
+    const maxPriceNumber = toNumberFilter(maxPrice);
+    if (minPriceNumber !== null || maxPriceNumber !== null) {
+        query.price = {};
+        if (minPriceNumber !== null) query.price.$gte = minPriceNumber;
+        if (maxPriceNumber !== null) query.price.$lte = maxPriceNumber;
+    }
+
+    const artistFilters = [];
+    const text = (q || search || '').trim();
+
+    if (artist) {
+        if (mongoose.Types.ObjectId.isValid(artist)) {
+            artistFilters.push({ _id: artist });
+        } else {
+            const artistName = unslug(artist);
+            artistFilters.push({
+                $or: [
+                    { username: new RegExp(`^${escapeRegex(artist)}$`, 'i') },
+                    { display_name: new RegExp(`^${escapeRegex(artistName)}$`, 'i') },
+                ],
+            });
+        }
+    }
+
+    if (genre) {
+        const genreName = unslug(genre);
+        artistFilters.push({
+            $or: [
+                { genre: new RegExp(`^${escapeRegex(genre)}$`, 'i') },
+                { genre: new RegExp(`^${escapeRegex(genreName)}$`, 'i') },
+            ],
+        });
+    }
+
+    if (text) {
+        const textRegex = new RegExp(escapeRegex(text), 'i');
+        query.$or = [
+            { title: textRegex },
+            { description: textRegex },
+            { merchType: textRegex },
+        ];
+
+        const matchingArtists = await User.find({
+            role: 'artist',
+            $or: [
+                { username: textRegex },
+                { display_name: textRegex },
+                { genre: textRegex },
+            ],
+        }).select('_id');
+
+        if (matchingArtists.length > 0) {
+            query.$or.push({ artist: { $in: matchingArtists.map((item) => item._id) } });
+        }
+    }
+
+    if (artistFilters.length > 0) {
+        const artists = await User.find({ role: 'artist', $and: artistFilters }).select('_id');
+        query.artist = { $in: artists.map((item) => item._id) };
+    }
+
+    return query;
+};
+
+//Get all prod info for shop (public info & preview url)
 export const getAllProductInfo = async (req, res, next) => {
     try {
-        const product = await Product.find({ deletedAt: null }).populate(productPopulate);
+        const page = toPositiveInt(req.query.page, 1, 100000);
+        const limit = toPositiveInt(req.query.limit, 50, 100);
+        const skip = (page - 1) * limit;
+        const query = await buildProductQuery(req.query);
+        const sort = getSortOption(req.query.sort);
 
-        return res.status(200).json({ success: true, data: product.map(formatPublicProduct) });
+        const [product, total] = await Promise.all([
+            Product.find(query)
+                .sort(sort)
+                .skip(skip)
+                .limit(limit)
+                .populate(productPopulate),
+            Product.countDocuments(query),
+        ]);
+
+        return res.status(200).json({
+            success: true,
+            data: product.map(formatPublicProduct),
+            meta: {
+                page,
+                limit,
+                total,
+                total_pages: Math.ceil(total / limit),
+                sort: req.query.sort || 'newest',
+            },
+        });
     }
     catch (err) {
         next(err);
@@ -26,6 +216,8 @@ export const getProductById = async (req, res, next) => {
     try {
         const { productId } = req.params;
         const query = mongoose.Types.ObjectId.isValid(productId) ? { _id: productId } : { slug: productId };
+        query.deletedAt = null;
+        query.status = 'published';
         const product = await Product.findOne(query).populate(productPopulate);
 
         if (!product) {
@@ -209,7 +401,7 @@ export const createAlbumProduct = async (req, res, next) => {
                 },
             }));
 
-            const tracks = await Track.create(tracksData, { session });
+            const tracks = await Track.create(tracksData, { session, ordered: true });
 
             const [product] = await Product.create(
                 [
@@ -248,7 +440,7 @@ export const createAlbumProduct = async (req, res, next) => {
 
 export const createMerchProduct = async (req, res, next) => {
     try {
-        const { title, description, price, merchType } = req.body || {};
+        const { title, description, price, merchType, stock, variants, weightGrams, shipsInternationally } = req.body || {};
 
         if (!title) {
             return res.status(400).json({ success: false, message: 'Title is required' });
@@ -272,6 +464,27 @@ export const createMerchProduct = async (req, res, next) => {
             return res.status(400).json({ success: false, message: 'Price must be a valid number' });
         }
 
+        if (!MERCH_TYPES.includes(merchType)) {
+            return res.status(400).json({ success: false, message: 'Invalid merch type' });
+        }
+
+        const productStock = stock === undefined || stock === ''
+            ? null
+            : Number(stock);
+
+        if (productStock !== null && (!Number.isInteger(productStock) || productStock < 0)) {
+            return res.status(400).json({ success: false, message: 'Stock must be a non-negative integer' });
+        }
+
+        const merchVariants = normalizeMerchVariants(parseJsonArray(variants, 'Variants'));
+        const weight = weightGrams === undefined || weightGrams === ''
+            ? null
+            : Number(weightGrams);
+
+        if (weight !== null && (!Number.isFinite(weight) || weight < 0)) {
+            return res.status(400).json({ success: false, message: 'Weight must be a valid number' });
+        }
+
         const coverFile = req.files?.cover?.[0];
 
         if (!coverFile) {
@@ -285,10 +498,14 @@ export const createMerchProduct = async (req, res, next) => {
             artist: req.user.user_Id,
             type: 'merch',
             merchType,
+            merchVariants,
+            weightGrams: weight,
+            shipsInternationally: shipsInternationally === 'true' || shipsInternationally === true,
             title,
             slug,
             description,
             price: productPrice,
+            stock: productStock,
             coverUrl: {
                 public_id: coverUpload.public_id,
                 url: coverUpload.secure_url,

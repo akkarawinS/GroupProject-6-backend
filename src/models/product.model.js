@@ -1,10 +1,24 @@
 import mongoose from "mongoose";
 
+const merchVariantSchema = new mongoose.Schema(
+    {
+        variantId: { type: String, trim: true },
+        size: { type: String, trim: true, default: "" },
+        color: { type: String, trim: true, default: "" },
+        stockQuantity: { type: Number, min: 0, default: 0 },
+        sku: { type: String, trim: true, default: "" },
+    },
+    { _id: false },
+);
+
 const productSchema = new mongoose.Schema(
     {
         artist: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true, required: true, },
         type: { type: String, enum: ['single', 'album', 'merch'], required: true },
         merchType: { type: String, enum: ['tshirt', 'vinyl', 'cd', 'cassette', 'poster', 'snapback', 'tote'], default: null },
+        merchVariants: { type: [merchVariantSchema], default: [] },
+        weightGrams: { type: Number, min: 0, default: null },
+        shipsInternationally: { type: Boolean, default: false },
         title: { type: String, trim: true, required: true },
         slug: { type: String, unique: true, lowercase: true, trim: true, index: true, required: true },
         tracks: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Track' }],

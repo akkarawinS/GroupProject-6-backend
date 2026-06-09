@@ -22,6 +22,7 @@ const userSchema = new mongoose.Schema(
         profile_picture: { public_id: { type: String, default: null }, url: { type: String, default: null } },
         banner_picture: { public_id: { type: String, default: null }, url: { type: String, default: null } },
         bio: { type: String, maxlength: [250, "Bio must be less than 250 characters"], default: "" },
+        location: { type: String, trim: true, maxlength: [120, "Location must be less than 120 characters"], default: "" },
         collection: [{
             product_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Products', required: true },
             purchasedAt: { type: Date, default: Date.now }

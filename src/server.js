@@ -16,7 +16,28 @@ const allowedOrigins = process.env.CORS_ORIGIN_URL
   .map((origin) => origin.trim())
   .filter(Boolean) ?? [];
 
-const corsOptions = { origin: allowedOrigins, credentials: true };
+const isProduction = process.env.NODE_ENV === 'production';
+
+const isAllowedDevOrigin = (origin) => {
+  if (isProduction || !origin) return false;
+  try {
+    const { hostname } = new URL(origin);
+    return hostname === 'localhost' || hostname === '127.0.0.1';
+  } catch {
+    return false;
+  }
+};
+
+const corsOptions = {
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin) || isAllowedDevOrigin(origin)) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error(`CORS blocked origin: ${origin}`));
+  },
+  credentials: true,
+};
 
 const server = http.createServer(app);
 
