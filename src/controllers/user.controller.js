@@ -2,7 +2,7 @@ import { User } from '../models/user.model.js';
 import { Product } from '../models/product.model.js';
 import { comparePassword } from '../utils/comparePassword.js';
 import { productPopulate } from './product.controller.js';
-import { formatArtist, formatOwnedProduct, formatPublicProduct } from '../utils/productFormatter.js';
+import { formatArtist, formatOwnedProduct, formatProduct, formatPublicProduct } from '../utils/productFormatter.js';
 import { uploadImageToCloudinary } from '../utils/cloudinaryUpload.js';
 
 import mongoose from 'mongoose';
@@ -160,7 +160,21 @@ export const getUserProfile = async (req, res, next) => {
             return res.status(404).json({ message: "User not found" });
         }
 
-        res.status(200).json(user);
+        const profile = user.toObject();
+        profile.user_collection = formatUserCollection(user.collection);
+
+        if (user.role === 'artist') {
+            const artistProducts = await Product.find({
+                artist: user._id,
+                deletedAt: null,
+            })
+                .sort({ createdAt: -1 })
+                .populate(productPopulate);
+
+            profile.artist_collection = formatArtistCollection(artistProducts);
+        }
+
+        res.status(200).json(profile);
 
     } catch (err) {
         next(err)
@@ -217,27 +231,77 @@ export const updateUserProfile = async (req, res, next) => {
 
 }
 
-export const getMyCollection = async (req, res, next) => {
+const formatUserCollection = (collection = []) => {
+    return collection.map((item) => {
+        if (!item.product_id) return null;
+
+        const product = item.product_id.toObject ? item.product_id.toObject() : item.product_id;
+        product.purchasedAt = item.purchasedAt;
+
+        return formatOwnedProduct(product);
+    }).filter(Boolean);
+};
+
+const formatArtistCollection = (products = []) => {
+    const items = products.map(formatProduct).filter(Boolean);
+
+    return {
+        items,
+        counts: {
+            all: items.length,
+            published: items.filter((product) => product.status === 'published').length,
+            draft: items.filter((product) => product.status === 'draft').length,
+            archived: items.filter((product) => product.status === 'archived').length,
+            single: items.filter((product) => product.type === 'single').length,
+            album: items.filter((product) => product.type === 'album').length,
+            merch: items.filter((product) => product.type === 'merch').length,
+        },
+    };
+};
+
+export const getMyUserCollection = async (req, res, next) => {
     try {
         const user = await User.findById(req.user.user_Id).populate({ path: 'collection.product_id', populate: productPopulate, });
 
         if (!user) {
             return res.status(404).json({ success: false, message: 'User not found', });
         }
-        const products = user.collection.map((item) => {
-            if (!item.product_id) return null;
-
-            const product = item.product_id.toObject ? item.product_id.toObject() : item.product_id;
-
-            product.purchasedAt = item.purchasedAt;
-
-            return formatOwnedProduct(product);
-        }).filter(Boolean);
+        const products = formatUserCollection(user.collection);
 
         return res.status(200).json({ success: true, data: products, });
 
     } catch (err) {
         next(err)
+    }
+};
+
+export const getMyCollection = getMyUserCollection;
+
+export const getMyArtistCollection = async (req, res, next) => {
+    try {
+        const artist = await User.findById(req.user.user_Id);
+
+        if (!artist) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        if (artist.role !== 'artist') {
+            return res.status(403).json({ success: false, message: 'Artist role required' });
+        }
+
+        const products = await Product.find({
+            artist: artist._id,
+            deletedAt: null,
+        })
+            .sort({ createdAt: -1 })
+            .populate(productPopulate);
+
+        return res.status(200).json({
+            success: true,
+            data: formatArtistCollection(products),
+        });
+    } catch (err) {
+        next(err);
     }
 };
 
