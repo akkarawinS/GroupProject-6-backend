@@ -23,12 +23,16 @@ export const formatArtist = (artist) => {
         display_name: artist.display_name,
         profile_picture: artist.profile_picture,
         profile_picture_url: artist.profile_picture?.url ?? null,
+        avatar_url: artist.profile_picture?.url ?? null,
         banner_picture: artist.banner_picture,
         banner_picture_url: artist.banner_picture?.url ?? null,
+        banner_url: artist.banner_picture?.url ?? artist.profile_picture?.url ?? null,
         bio: artist.bio,
+        location: artist.location ?? null,
         genre: artist.genre,
         genre_slug: genreSlug || null,
         genre_ids: genreSlug ? [genreSlug] : [],
+        genres: artist.genre ? [{ _id: genreSlug, slug: genreSlug, name: artist.genre }] : [],
         role: artist.role,
     };
 };
