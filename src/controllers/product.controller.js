@@ -209,7 +209,7 @@ export const createAlbumProduct = async (req, res, next) => {
                 },
             }));
 
-            const tracks = await Track.create(tracksData, { session });
+            const tracks = await Track.create(tracksData, { session, ordered: true });
 
             const [product] = await Product.create(
                 [
