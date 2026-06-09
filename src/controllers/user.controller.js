@@ -44,6 +44,7 @@ const buildArtistQuery = (queryParams = {}) => {
             { username: textRegex },
             { display_name: textRegex },
             { bio: textRegex },
+            { location: textRegex },
             { genre: textRegex },
         ];
     }
@@ -80,7 +81,7 @@ export const getPublicArtists = async (req, res, next) => {
 
         const [artists, total] = await Promise.all([
             User.find(query)
-                .select('username display_name profile_picture banner_picture bio genre role createdAt')
+                .select('username display_name profile_picture banner_picture bio location genre role createdAt')
                 .sort({ display_name: 1, username: 1 })
                 .skip(skip)
                 .limit(limit),
@@ -153,7 +154,7 @@ export const getUserProfile = async (req, res, next) => {
         const user = await User.findById(req.user.user_Id)
             .populate({ path: 'wishlist.product_id', populate: productPopulate })
             .populate({ path: 'collection.product_id', populate: productPopulate })
-            .populate('followingArtist', 'username display_name profile_picture banner_picture bio genre role');
+            .populate('followingArtist', 'username display_name profile_picture banner_picture bio location genre role');
 
 
         if (!user) {
@@ -183,13 +184,14 @@ export const getUserProfile = async (req, res, next) => {
 
 export const updateUserProfile = async (req, res, next) => {
     try {
-        const { display_name, profile_picture, banner_picture, bio } = req.body || {};
+        const { display_name, profile_picture, banner_picture, bio, location } = req.body || {};
         const update = {};
         const profileFile = req.files?.profile_picture?.[0];
         const bannerFile = req.files?.banner_picture?.[0];
 
         if (display_name !== undefined) update.display_name = display_name;
         if (bio !== undefined) update.bio = bio;
+        if (location !== undefined) update.location = location;
 
         if (profileFile) {
             const upload = await uploadImageToCloudinary(profileFile.buffer);
