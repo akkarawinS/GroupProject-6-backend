@@ -226,7 +226,7 @@ const formatProductDetail = (product, tracks) => {
                     variant_id: 'default',
                     size: '',
                     color: '',
-                    stock_quantity: product.stock ?? 999999,
+                    stock_quantity: product.stock ?? 9999,
                     sku: '',
                 },
             ];

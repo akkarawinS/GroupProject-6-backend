@@ -7,6 +7,8 @@ import { uploadImageToCloudinary } from '../utils/cloudinaryUpload.js';
 
 import mongoose from 'mongoose';
 
+const BIO_MAX_LENGTH = 500;
+
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const slugifyText = (value) => {
@@ -163,6 +165,7 @@ export const getUserProfile = async (req, res, next) => {
 
         const profile = user.toObject();
         profile.user_collection = formatUserCollection(user.collection);
+        profile.wishlist = formatWishlist(user.wishlist);
 
         if (user.role === 'artist') {
             const artistProducts = await Product.find({
@@ -190,7 +193,13 @@ export const updateUserProfile = async (req, res, next) => {
         const bannerFile = req.files?.banner_picture?.[0];
 
         if (display_name !== undefined) update.display_name = display_name;
-        if (bio !== undefined) update.bio = bio;
+        if (bio !== undefined) {
+            const nextBio = String(bio).trim();
+            if (nextBio.length > BIO_MAX_LENGTH) {
+                return res.status(400).json({ success: false, message: `Bio must be ${BIO_MAX_LENGTH} characters or fewer` });
+            }
+            update.bio = nextBio;
+        }
         if (location !== undefined) update.location = location;
 
         if (profileFile) {
@@ -241,6 +250,17 @@ const formatUserCollection = (collection = []) => {
         product.purchasedAt = item.purchasedAt;
 
         return formatOwnedProduct(product);
+    }).filter(Boolean);
+};
+
+const formatWishlist = (wishlist = []) => {
+    return wishlist.map((item) => {
+        if (!item.product_id) return null;
+
+        const product = item.product_id.toObject ? item.product_id.toObject() : item.product_id;
+        if (product.status !== 'published' || product.deletedAt) return null;
+
+        return formatPublicProduct(product);
     }).filter(Boolean);
 };
 
@@ -438,10 +458,14 @@ export const toggleWishlist = async (req, res, next) => {
             });
         }
 
-        const product = await Product.findById(productId);
+        const product = await Product.findOne({
+            _id: productId,
+            status: 'published',
+            deletedAt: null,
+        });
 
         if (!product) {
-            return res.status(404).json({ success: false, message: 'Product not found' });
+            return res.status(404).json({ success: false, message: 'Product not found or unavailable' });
         }
 
         const isWishlisted = user.wishlist.some(i => i.product_id.toString() === productId);

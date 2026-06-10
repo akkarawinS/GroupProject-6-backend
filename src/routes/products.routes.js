@@ -1,12 +1,15 @@
 import { Router } from 'express';
 import { authUser } from '../middlewares/authen.middleware.js';
 import { isArtistOrAdmin } from '../middlewares/roleCheck.middleware.js';
-import { createAlbumProduct, createMerchProduct, createSingleProduct, getAllProductInfo, getProductById } from '../controllers/product.controller.js';
+import { createAlbumProduct, createMerchProduct, createSingleProduct, deleteProduct, getAllProductInfo, getManageableProductById, getManageableProducts, getProductById, updateProduct } from '../controllers/product.controller.js';
 import { uploadProductFiles } from '../middlewares/uploadFiles.middleware.js';
 
 export const router = Router();
 
 router.get('/products', getAllProductInfo);
+
+router.get('/products/manage', authUser, isArtistOrAdmin, getManageableProducts);
+router.get('/products/manage/:productId', authUser, isArtistOrAdmin, getManageableProductById);
 
 router.get('/products/:productId', getProductById);
 
@@ -21,3 +24,9 @@ router.post('/products/album',authUser,isArtistOrAdmin,uploadProductFiles.fields
 router.post('/products/merch',authUser,isArtistOrAdmin,uploadProductFiles.fields([
       { name: 'cover', maxCount: 1 },
     ]),createMerchProduct);
+
+router.patch('/products/:productId', authUser, isArtistOrAdmin, uploadProductFiles.fields([
+      { name: 'cover', maxCount: 1 },
+    ]), updateProduct);
+
+router.delete('/products/:productId', authUser, isArtistOrAdmin, deleteProduct);

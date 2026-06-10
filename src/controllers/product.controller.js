@@ -12,6 +12,7 @@ export const productPopulate = [
 ];
 
 const MERCH_TYPES = ['tshirt', 'vinyl', 'cd', 'cassette', 'poster', 'snapback', 'tote', 'other'];
+const MAX_STOCK_QUANTITY = 9999;
 
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -52,8 +53,8 @@ const normalizeMerchVariants = (variants) => {
         const stockValue = variant.stock ?? variant.stockQuantity ?? variant.stock_quantity;
         const stockQuantity = Number(stockValue);
 
-        if (!Number.isInteger(stockQuantity) || stockQuantity < 0) {
-            const err = new Error(`Variant ${index + 1} stock must be a non-negative integer`);
+        if (!Number.isInteger(stockQuantity) || stockQuantity < 0 || stockQuantity > MAX_STOCK_QUANTITY) {
+            const err = new Error(`Variant ${index + 1} stock must be a whole number between 0 and ${MAX_STOCK_QUANTITY}`);
             err.status = 400;
             throw err;
         }
@@ -67,6 +68,10 @@ const normalizeMerchVariants = (variants) => {
         };
     });
 };
+
+const getTotalVariantStock = (variants = []) => (
+    variants.reduce((sum, variant) => sum + (variant.stockQuantity || 0), 0)
+);
 
 const getSortOption = (sort) => {
     switch (sort) {
@@ -226,6 +231,44 @@ export const getProductById = async (req, res, next) => {
         return res.status(200).json({ success: true, data: formatPublicProduct(product) });
     }
     catch (err) {
+        next(err);
+    }
+};
+
+export const getManageableProducts = async (req, res, next) => {
+    try {
+        const query = { deletedAt: null };
+        if (req.user.role === 'artist') {
+            query.artist = req.user.user_Id;
+        }
+
+        const products = await Product.find(query)
+            .sort({ createdAt: -1 })
+            .populate(productPopulate);
+
+        return res.status(200).json({ success: true, data: products.map(formatProduct) });
+    } catch (err) {
+        next(err);
+    }
+};
+
+export const getManageableProductById = async (req, res, next) => {
+    try {
+        const { productId } = req.params;
+        const query = mongoose.Types.ObjectId.isValid(productId) ? { _id: productId } : { slug: productId };
+        query.deletedAt = null;
+
+        const product = await Product.findOne(query).populate(productPopulate);
+        if (!product) {
+            return res.status(404).json({ success: false, message: 'Product not found' });
+        }
+
+        if (!canManageProduct(req.user, product)) {
+            return res.status(403).json({ success: false, message: 'You can only manage your own products' });
+        }
+
+        return res.status(200).json({ success: true, data: formatProduct(product) });
+    } catch (err) {
         next(err);
     }
 };
@@ -472,11 +515,15 @@ export const createMerchProduct = async (req, res, next) => {
             ? null
             : Number(stock);
 
-        if (productStock !== null && (!Number.isInteger(productStock) || productStock < 0)) {
-            return res.status(400).json({ success: false, message: 'Stock must be a non-negative integer' });
+        if (productStock !== null && (!Number.isInteger(productStock) || productStock < 0 || productStock > MAX_STOCK_QUANTITY)) {
+            return res.status(400).json({ success: false, message: `Stock must be a whole number between 0 and ${MAX_STOCK_QUANTITY}` });
         }
 
         const merchVariants = normalizeMerchVariants(parseJsonArray(variants, 'Variants'));
+        const totalVariantStock = getTotalVariantStock(merchVariants);
+        if (totalVariantStock > MAX_STOCK_QUANTITY) {
+            return res.status(400).json({ success: false, message: `Total stock cannot exceed ${MAX_STOCK_QUANTITY}` });
+        }
         const weight = weightGrams === undefined || weightGrams === ''
             ? null
             : Number(weightGrams);
@@ -516,6 +563,160 @@ export const createMerchProduct = async (req, res, next) => {
         const createdProduct = await Product.findById(product._id).populate(productPopulate);
 
         return res.status(201).json({ success: true, data: formatProduct(createdProduct) });
+    } catch (err) {
+        next(err);
+    }
+};
+
+const canManageProduct = (user, product) => {
+    if (user.role === 'admin') return true;
+    if (user.role !== 'artist') return false;
+    const artistId = product.artist?._id || product.artist;
+    return artistId?.toString() === user.user_Id?.toString();
+};
+
+const parseBooleanField = (value) => value === 'true' || value === true;
+
+export const updateProduct = async (req, res, next) => {
+    try {
+        const { productId } = req.params;
+        const query = mongoose.Types.ObjectId.isValid(productId) ? { _id: productId } : { slug: productId };
+        query.deletedAt = null;
+
+        const product = await Product.findOne(query);
+        if (!product) {
+            return res.status(404).json({ success: false, message: 'Product not found' });
+        }
+
+        if (!canManageProduct(req.user, product)) {
+            return res.status(403).json({ success: false, message: 'You can only manage your own products' });
+        }
+
+        const {
+            title,
+            description,
+            price,
+            status,
+            nameYourPrice,
+            merchType,
+            stock,
+            variants,
+            weightGrams,
+            shipsInternationally,
+        } = req.body || {};
+
+        if (title !== undefined) {
+            if (!String(title).trim()) {
+                return res.status(400).json({ success: false, message: 'Title is required' });
+            }
+            product.title = String(title).trim();
+        }
+
+        if (description !== undefined) {
+            if (!String(description).trim()) {
+                return res.status(400).json({ success: false, message: 'Description is required' });
+            }
+            product.description = String(description).trim();
+        }
+
+        if (price !== undefined && price !== '') {
+            const productPrice = Number(price);
+            if (!Number.isFinite(productPrice) || productPrice < 0) {
+                return res.status(400).json({ success: false, message: 'Price must be a valid number' });
+            }
+            product.price = productPrice;
+            if (product.nameYourPrice) product.minPrice = productPrice;
+        }
+
+        if (status !== undefined) {
+            if (!['draft', 'published', 'archived'].includes(status)) {
+                return res.status(400).json({ success: false, message: 'Invalid status' });
+            }
+            product.status = status;
+        }
+
+        if (nameYourPrice !== undefined && product.type !== 'merch') {
+            const nextNameYourPrice = parseBooleanField(nameYourPrice);
+            product.nameYourPrice = nextNameYourPrice;
+            product.minPrice = nextNameYourPrice ? product.price : undefined;
+        }
+
+        if (product.type === 'merch') {
+            if (merchType !== undefined) {
+                if (!MERCH_TYPES.includes(merchType)) {
+                    return res.status(400).json({ success: false, message: 'Invalid merch type' });
+                }
+                product.merchType = merchType;
+            }
+
+            if (stock !== undefined && stock !== '') {
+                const productStock = Number(stock);
+                if (!Number.isInteger(productStock) || productStock < 0 || productStock > MAX_STOCK_QUANTITY) {
+                    return res.status(400).json({ success: false, message: `Stock must be a whole number between 0 and ${MAX_STOCK_QUANTITY}` });
+                }
+                product.stock = productStock;
+            }
+
+            if (variants !== undefined) {
+                product.merchVariants = normalizeMerchVariants(parseJsonArray(variants, 'Variants'));
+                const totalVariantStock = getTotalVariantStock(product.merchVariants);
+                if (totalVariantStock > MAX_STOCK_QUANTITY) {
+                    return res.status(400).json({ success: false, message: `Total stock cannot exceed ${MAX_STOCK_QUANTITY}` });
+                }
+                product.stock = totalVariantStock;
+            }
+
+            if (weightGrams !== undefined) {
+                const weight = weightGrams === '' ? null : Number(weightGrams);
+                if (weight !== null && (!Number.isFinite(weight) || weight < 0)) {
+                    return res.status(400).json({ success: false, message: 'Weight must be a valid number' });
+                }
+                product.weightGrams = weight;
+            }
+
+            if (shipsInternationally !== undefined) {
+                product.shipsInternationally = parseBooleanField(shipsInternationally);
+            }
+        }
+
+        const coverFile = req.files?.cover?.[0];
+        if (coverFile) {
+            const coverUpload = await uploadImageToCloudinary(coverFile.buffer);
+            product.coverUrl = {
+                public_id: coverUpload.public_id,
+                url: coverUpload.secure_url,
+            };
+        }
+
+        await product.save();
+
+        const updatedProduct = await Product.findById(product._id).populate(productPopulate);
+        return res.status(200).json({ success: true, data: formatProduct(updatedProduct) });
+    } catch (err) {
+        next(err);
+    }
+};
+
+export const deleteProduct = async (req, res, next) => {
+    try {
+        const { productId } = req.params;
+        const query = mongoose.Types.ObjectId.isValid(productId) ? { _id: productId } : { slug: productId };
+        query.deletedAt = null;
+
+        const product = await Product.findOne(query);
+        if (!product) {
+            return res.status(404).json({ success: false, message: 'Product not found' });
+        }
+
+        if (!canManageProduct(req.user, product)) {
+            return res.status(403).json({ success: false, message: 'You can only manage your own products' });
+        }
+
+        product.deletedAt = new Date();
+        product.status = 'archived';
+        await product.save();
+
+        return res.status(200).json({ success: true, message: 'Product deleted' });
     } catch (err) {
         next(err);
     }
