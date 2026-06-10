@@ -1,6 +1,6 @@
 import { User } from '../models/user.model.js';
 import { comparePassword } from '../utils/comparePassword.js'
-import jwt from 'jsonwebtoken';
+import { clearAccessTokenCookie, setAccessTokenCookie } from '../utils/token.js';
 
 
 export const fanRegister = async (req, res, next) => {
@@ -77,20 +77,7 @@ export const login = async (req, res, next) => {
             return res.status(401).json({ success: false, message: "Invalid email or password" })
         }
 
-        const token = jwt.sign({ user_Id: findUser._id, role: findUser.role }, process.env.JWT_SECRET, {
-            expiresIn: '1h',
-        });
-
-        const isProd = process.env.NODE_ENV === 'production'
-
-        res.cookie("accessToken", token, {
-            httpOnly: true,
-            secure: isProd, // Only send over HTTPS in production
-            sameSite: isProd ? "none" : "lax",
-            path: "/",
-            maxAge: 60 * 60 * 1000, // 1HR its age of cookie
-        })
-
+        setAccessTokenCookie(res, { user_Id: findUser._id, role: findUser.role });
 
         res.status(200).json({
             success: true,
@@ -111,14 +98,7 @@ export const login = async (req, res, next) => {
 }
 
 export const logout = async (req, res, next) => {
-    const isProd = process.env.NODE_ENV === 'production';
-
-    res.clearCookie('accessToken', {
-        httpOnly: true,
-        secure: isProd, // Only send over HTTPS in production
-        sameSite: isProd ? "none" : "lax",
-        path: "/",
-    });
+    clearAccessTokenCookie(res);
 
     return res.status(200).json({
         success: true,
