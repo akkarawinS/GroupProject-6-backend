@@ -1,5 +1,6 @@
 import { User } from '../models/user.model.js';
 import { Product } from '../models/product.model.js';
+import { Order } from '../models/order.model.js';
 import { comparePassword } from '../utils/comparePassword.js';
 import { productPopulate } from './product.controller.js';
 import { formatArtist, formatOwnedProduct, formatProduct, formatPublicProduct } from '../utils/productFormatter.js';
@@ -8,6 +9,10 @@ import { uploadImageToCloudinary } from '../utils/cloudinaryUpload.js';
 import mongoose from 'mongoose';
 
 const BIO_MAX_LENGTH = 500;
+const SUCCESSFUL_ORDER_FILTER = {
+    payment_status: 'paid',
+    order_status: { $ne: 'cancelled' },
+};
 
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -155,7 +160,6 @@ export const getUserProfile = async (req, res, next) => {
     try {
         const user = await User.findById(req.user.user_Id)
             .populate({ path: 'wishlist.product_id', populate: productPopulate })
-            .populate({ path: 'collection.product_id', populate: productPopulate })
             .populate('followingArtist', 'username display_name profile_picture banner_picture bio location genre role');
 
 
@@ -164,7 +168,7 @@ export const getUserProfile = async (req, res, next) => {
         }
 
         const profile = user.toObject();
-        profile.user_collection = formatUserCollection(user.collection);
+        profile.user_collection = await getSuccessfulOrderCollection(user._id);
         profile.wishlist = formatWishlist(user.wishlist);
 
         if (user.role === 'artist') {
@@ -242,15 +246,61 @@ export const updateUserProfile = async (req, res, next) => {
 
 }
 
-const formatUserCollection = (collection = []) => {
-    return collection.map((item) => {
-        if (!item.product_id) return null;
+const getSuccessfulOrderCollection = async (userId) => {
+    const orders = await Order.find({
+        user_id: userId,
+        ...SUCCESSFUL_ORDER_FILTER,
+    })
+        .sort({ createdAt: -1 })
+        .populate({
+            path: 'items.product_id',
+            populate: productPopulate,
+        });
 
-        const product = item.product_id.toObject ? item.product_id.toObject() : item.product_id;
-        product.purchasedAt = item.purchasedAt;
+    return formatOrderCollection(orders);
+};
 
-        return formatOwnedProduct(product);
-    }).filter(Boolean);
+const formatOrderCollection = (orders = []) => {
+    return orders.flatMap((order) => (
+        order.items.map((item, index) => {
+            const product = item.product_id?.toObject ? item.product_id.toObject() : item.product_id;
+            const collectionItemId = `${order._id}-${item.product_id?._id || item.product_id || index}`;
+
+            if (product) {
+                product.purchasedAt = order.createdAt;
+                const formatted = formatOwnedProduct(product);
+                return {
+                    ...formatted,
+                    collection_item_id: collectionItemId,
+                    order_id: order._id,
+                    purchased_at: order.createdAt,
+                    quantity: item.quantity,
+                    unit_price: item.unit_price,
+                };
+            }
+
+            return {
+                _id: item.product_id,
+                collection_item_id: collectionItemId,
+                order_id: order._id,
+                artist_id: item.artist_id,
+                artist: {
+                    _id: item.artist_id,
+                    name: item.artist_name_snapshot,
+                    display_name: item.artist_name_snapshot,
+                },
+                type: item.product_type,
+                title: item.title_snapshot,
+                price: item.unit_price,
+                cover_url: item.cover_url_snapshot,
+                status: 'purchased',
+                purchased_at: order.createdAt,
+                quantity: item.quantity,
+                unit_price: item.unit_price,
+                tracks: item.download_tracks || [],
+            };
+        })
+    )).filter(Boolean);
 };
 
 const formatWishlist = (wishlist = []) => {
@@ -283,12 +333,12 @@ const formatArtistCollection = (products = []) => {
 
 export const getMyUserCollection = async (req, res, next) => {
     try {
-        const user = await User.findById(req.user.user_Id).populate({ path: 'collection.product_id', populate: productPopulate, });
+        const user = await User.findById(req.user.user_Id);
 
         if (!user) {
             return res.status(404).json({ success: false, message: 'User not found', });
         }
-        const products = formatUserCollection(user.collection);
+        const products = await getSuccessfulOrderCollection(user._id);
 
         return res.status(200).json({ success: true, data: products, });
 
