@@ -40,6 +40,7 @@ export const getCartItem = async (req, res, next) => {
     }
 };
 
+//Add item to cart
 export const postCartItem = async (req, res, next) => {
     try {
         const userId = req.user.user_Id;
