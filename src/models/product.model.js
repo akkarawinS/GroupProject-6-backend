@@ -15,7 +15,7 @@ const productSchema = new mongoose.Schema(
     {
         artist: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true, required: true, },
         type: { type: String, enum: ['single', 'album', 'merch'], required: true },
-        merchType: { type: String, enum: ['tshirt', 'vinyl', 'cd', 'cassette', 'poster', 'snapback', 'tote'], default: null },
+        merchType: { type: String, enum: ['tshirt', 'vinyl', 'cd', 'cassette', 'poster', 'snapback', 'tote', 'other'], default: null },
         merchVariants: { type: [merchVariantSchema], default: [] },
         weightGrams: { type: Number, min: 0, default: null },
         shipsInternationally: { type: Boolean, default: false },

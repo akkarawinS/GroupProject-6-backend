@@ -11,7 +11,7 @@ export const productPopulate = [
     { path: 'tracks' },
 ];
 
-const MERCH_TYPES = ['tshirt', 'vinyl', 'cd', 'cassette', 'poster', 'snapback', 'tote'];
+const MERCH_TYPES = ['tshirt', 'vinyl', 'cd', 'cassette', 'poster', 'snapback', 'tote', 'other'];
 
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { artistRegister, checkUserState, fanRegister, login, logout } from '../controllers/auth.controller.js'
 import { authUser } from '../middlewares/authen.middleware.js';
-import { changePassword, getMyArtistCollection, getMyCollection, getMyUserCollection, getPublicArtistById, getPublicArtists, getUserProfile, toggleFollowArtist, toggleWishlist, updateUserProfile } from '../controllers/user.controller.js';
+import { changePassword, getMyArtistCollection, getMyCollection, getMyFollowers, getMyUserCollection, getPublicArtistById, getPublicArtists, getUserProfile, toggleFollowArtist, toggleWishlist, updateUserProfile } from '../controllers/user.controller.js';
 import { uploadProfileImages } from  '../middlewares/uploadFiles.middleware.js'
 
 export const router = Router()
@@ -48,3 +48,6 @@ router.patch('/profile/password', authUser, changePassword);
 router.get('/me/collection', authUser, getMyCollection);
 router.get('/me/user-collection', authUser, getMyUserCollection);
 router.get('/me/artist-collection', authUser, getMyArtistCollection);
+
+//Get my followers (artist only)
+router.get('/me/followers', authUser, getMyFollowers);

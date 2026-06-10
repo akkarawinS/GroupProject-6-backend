@@ -307,6 +307,41 @@ export const getMyArtistCollection = async (req, res, next) => {
     }
 };
 
+export const getMyFollowers = async (req, res, next) => {
+    try {
+        const artist = await User.findById(req.user.user_Id);
+
+        if (!artist) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        if (artist.role !== 'artist') {
+            return res.status(403).json({ success: false, message: 'Artist role required' });
+        }
+
+        const followers = await User.find({ followingArtist: artist._id })
+            .select('username display_name profile_picture role createdAt')
+            .sort({ createdAt: -1 });
+
+        return res.status(200).json({
+            success: true,
+            data: followers.map((follower) => ({
+                _id: follower._id,
+                username: follower.username,
+                display_name: follower.display_name,
+                avatar_url: follower.profile_picture?.url ?? null,
+                role: follower.role,
+                followed_since: follower.createdAt,
+            })),
+            meta: {
+                total: followers.length,
+            },
+        });
+    } catch (err) {
+        next(err);
+    }
+};
+
 export const changePassword = async (req, res, next) => {
     try {
         const { currentPassword, newPassword } = req.body;
