@@ -12,6 +12,7 @@ export const productPopulate = [
 ];
 
 const MERCH_TYPES = ['tshirt', 'vinyl', 'cd', 'cassette', 'poster', 'snapback', 'tote', 'other'];
+const MAX_STOCK_QUANTITY = 9999;
 
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -52,8 +53,8 @@ const normalizeMerchVariants = (variants) => {
         const stockValue = variant.stock ?? variant.stockQuantity ?? variant.stock_quantity;
         const stockQuantity = Number(stockValue);
 
-        if (!Number.isInteger(stockQuantity) || stockQuantity < 0) {
-            const err = new Error(`Variant ${index + 1} stock must be a non-negative integer`);
+        if (!Number.isInteger(stockQuantity) || stockQuantity < 0 || stockQuantity > MAX_STOCK_QUANTITY) {
+            const err = new Error(`Variant ${index + 1} stock must be a whole number between 0 and ${MAX_STOCK_QUANTITY}`);
             err.status = 400;
             throw err;
         }
@@ -67,6 +68,10 @@ const normalizeMerchVariants = (variants) => {
         };
     });
 };
+
+const getTotalVariantStock = (variants = []) => (
+    variants.reduce((sum, variant) => sum + (variant.stockQuantity || 0), 0)
+);
 
 const getSortOption = (sort) => {
     switch (sort) {
@@ -510,11 +515,15 @@ export const createMerchProduct = async (req, res, next) => {
             ? null
             : Number(stock);
 
-        if (productStock !== null && (!Number.isInteger(productStock) || productStock < 0)) {
-            return res.status(400).json({ success: false, message: 'Stock must be a non-negative integer' });
+        if (productStock !== null && (!Number.isInteger(productStock) || productStock < 0 || productStock > MAX_STOCK_QUANTITY)) {
+            return res.status(400).json({ success: false, message: `Stock must be a whole number between 0 and ${MAX_STOCK_QUANTITY}` });
         }
 
         const merchVariants = normalizeMerchVariants(parseJsonArray(variants, 'Variants'));
+        const totalVariantStock = getTotalVariantStock(merchVariants);
+        if (totalVariantStock > MAX_STOCK_QUANTITY) {
+            return res.status(400).json({ success: false, message: `Total stock cannot exceed ${MAX_STOCK_QUANTITY}` });
+        }
         const weight = weightGrams === undefined || weightGrams === ''
             ? null
             : Number(weightGrams);
@@ -642,15 +651,19 @@ export const updateProduct = async (req, res, next) => {
 
             if (stock !== undefined && stock !== '') {
                 const productStock = Number(stock);
-                if (!Number.isInteger(productStock) || productStock < 0) {
-                    return res.status(400).json({ success: false, message: 'Stock must be a non-negative integer' });
+                if (!Number.isInteger(productStock) || productStock < 0 || productStock > MAX_STOCK_QUANTITY) {
+                    return res.status(400).json({ success: false, message: `Stock must be a whole number between 0 and ${MAX_STOCK_QUANTITY}` });
                 }
                 product.stock = productStock;
             }
 
             if (variants !== undefined) {
                 product.merchVariants = normalizeMerchVariants(parseJsonArray(variants, 'Variants'));
-                product.stock = product.merchVariants.reduce((sum, variant) => sum + variant.stockQuantity, 0);
+                const totalVariantStock = getTotalVariantStock(product.merchVariants);
+                if (totalVariantStock > MAX_STOCK_QUANTITY) {
+                    return res.status(400).json({ success: false, message: `Total stock cannot exceed ${MAX_STOCK_QUANTITY}` });
+                }
+                product.stock = totalVariantStock;
             }
 
             if (weightGrams !== undefined) {

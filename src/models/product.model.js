@@ -1,11 +1,13 @@
 import mongoose from "mongoose";
 
+const MAX_STOCK_QUANTITY = 9999;
+
 const merchVariantSchema = new mongoose.Schema(
     {
         variantId: { type: String, trim: true },
         size: { type: String, trim: true, default: "" },
         color: { type: String, trim: true, default: "" },
-        stockQuantity: { type: Number, min: 0, default: 0 },
+        stockQuantity: { type: Number, min: 0, max: MAX_STOCK_QUANTITY, default: 0 },
         sku: { type: String, trim: true, default: "" },
     },
     { _id: false },
@@ -25,10 +27,10 @@ const productSchema = new mongoose.Schema(
         description: { type: String, required: true },
         price: { type: Number, required: true, min: 0 },
         minPrice: { type: Number, min: 0 },
-        stock: { type: Number, default: null, min: 0 ,validate: {validator(value){
-            if(this.type === 'merch') return value === null || value === undefined || Number.isInteger(value) && value >= 0;
+        stock: { type: Number, default: null, min: 0, max: MAX_STOCK_QUANTITY ,validate: {validator(value){
+            if(this.type === 'merch') return value === null || value === undefined || Number.isInteger(value) && value >= 0 && value <= MAX_STOCK_QUANTITY;
             return value === null || value === undefined;
-        }, message: 'Stock is only required for merch products'}},
+        }, message: `Stock must be a whole number between 0 and ${MAX_STOCK_QUANTITY} for merch products`}},
         coverUrl: { public_id: { type: String, default: null }, url: { type: String, default: null } },
         nameYourPrice: { type: Boolean, default: false },
         status: { type: String, enum: ['draft', 'published', 'archived'], default: 'published' },

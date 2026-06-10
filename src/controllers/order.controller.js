@@ -14,6 +14,23 @@ const getCoverSnapshotUrl = (coverUrl) => {
     return coverUrl.url || null;
 };
 
+const getDownloadTracksSnapshot = (product) => {
+    if (!['single', 'album'].includes(product.type)) return [];
+
+    return (product.tracks || [])
+        .map((track, index) => {
+            const audioUrl = track?.audioUrl?.url;
+            if (!audioUrl) return null;
+
+            return {
+                track_id: track._id || null,
+                title: track.title || `${product.title} ${index + 1}`,
+                audio_file_url: audioUrl,
+            };
+        })
+        .filter(Boolean);
+};
+
 const isTransactionUnsupportedError = (err) => {
     return err?.code === 20
         || err?.codeName === 'IllegalOperation'
@@ -24,7 +41,10 @@ const buildOrderFromCart = async ({ userId, paymentMethod, shippingAddress, sess
     const cartQuery = Cart.findOne({ user_id: userId, status: 'active' })
         .populate({
             path: 'items.product_id',
-            populate: { path: 'artist', select: 'username display_name' },
+            populate: [
+                { path: 'artist', select: 'username display_name' },
+                { path: 'tracks' },
+            ],
         });
 
     if (session) cartQuery.session(session);
@@ -92,6 +112,7 @@ const buildOrderFromCart = async ({ userId, paymentMethod, shippingAddress, sess
             quantity,
             unit_price: unitPrice,
             subtotal: itemSubtotal,
+            download_tracks: getDownloadTracksSnapshot(product),
         });
     }
 
@@ -161,7 +182,14 @@ export const createOrder = async (req, res, next) => {
 export const getOrders = async (req, res, next) => {
     try {
         const userId = req.user.user_Id;
-        const query = req.user.role === 'admin' ? {} : { user_id: userId };
+        let query = { user_id: userId };
+
+        if (req.user.role === 'admin') {
+            query = {};
+        } else if (req.user.role === 'artist') {
+            query = { 'items.artist_id': userId };
+        }
+
         const orders = await Order.find(query)
             .sort({ createdAt: -1 })
             .populate('user_id', 'username email display_name')

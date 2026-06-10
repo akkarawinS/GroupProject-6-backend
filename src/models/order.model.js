@@ -1,5 +1,7 @@
 import mongoose from 'mongoose';
 
+const MAX_ORDER_ITEM_QUANTITY = 9999;
+
 const orderItemSchema = new mongoose.Schema({
     product_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Products', required: true },
     artist_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
@@ -8,9 +10,14 @@ const orderItemSchema = new mongoose.Schema({
     cover_url_snapshot: { type: String, default: null },
     product_type: { type: String, enum: ['single', 'album', 'merch'], required: true },
     variant_id: { type: String, default: null },
-    quantity: { type: Number, required: true, min: 1, validate: Number.isInteger },
+    quantity: { type: Number, required: true, min: 1, max: MAX_ORDER_ITEM_QUANTITY, validate: Number.isInteger },
     unit_price: { type: Number, required: true, min: 0 },
     subtotal: { type: Number, required: true, min: 0 },
+    download_tracks: [{
+        track_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Track', default: null },
+        title: { type: String, required: true },
+        audio_file_url: { type: String, required: true },
+    }],
 }, { _id: false });
 
 const shippingAddressSchema = new mongoose.Schema({

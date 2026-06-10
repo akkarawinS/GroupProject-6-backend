@@ -2,6 +2,8 @@ import mongoose from 'mongoose';
 import { Cart } from '../models/cart.model.js';
 import { Product } from '../models/product.model.js';
 
+const MAX_CART_QUANTITY = 9999;
+
 const calculateSubtotal = (items = []) => {
     return items.reduce((sum, item) => sum + item.price_at_added * item.quantity, 0);
 };
@@ -52,8 +54,8 @@ export const postCartItem = async (req, res, next) => {
         }
 
         quantity = Number(quantity);
-        if (!Number.isInteger(quantity) || quantity < 1) {
-            return res.status(400).json({ success: false, message: 'Quantity must be a positive integer' });
+        if (!Number.isInteger(quantity) || quantity < 1 || quantity > MAX_CART_QUANTITY) {
+            return res.status(400).json({ success: false, message: `Quantity must be a whole number between 1 and ${MAX_CART_QUANTITY}` });
         }
 
         const product = await Product.findOne({
@@ -103,6 +105,10 @@ export const postCartItem = async (req, res, next) => {
                 ? existingItem.quantity + quantity
                 : 1;
 
+            if (nextQuantity > MAX_CART_QUANTITY) {
+                return res.status(400).json({ success: false, message: `Quantity cannot exceed ${MAX_CART_QUANTITY}` });
+            }
+
             if (product.type === 'merch') {
                 const variant = product.merchVariants.find((item) => item.variantId === normalizedVariantId);
                 if (variant.stockQuantity < nextQuantity) {
@@ -137,8 +143,8 @@ export const patchCartItem = async (req, res, next) => {
         let { quantity } = req.body || {};
 
         quantity = Number(quantity);
-        if (!Number.isInteger(quantity) || quantity < 1) {
-            return res.status(400).json({ success: false, message: 'Quantity must be a positive integer' });
+        if (!Number.isInteger(quantity) || quantity < 1 || quantity > MAX_CART_QUANTITY) {
+            return res.status(400).json({ success: false, message: `Quantity must be a whole number between 1 and ${MAX_CART_QUANTITY}` });
         }
 
         const cart = await Cart.findOne({ user_id: userId, status: 'active' });
