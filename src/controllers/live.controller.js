@@ -1,4 +1,5 @@
 import { User } from "../models/user.model.js";
+import { LiveSession } from "../models/liveSession.model.js";
 import { createLiveKitToken, getLiveKitConfig } from "../utils/liveKit.js";
 
 const ROOM_NAME_PATTERN = /^[a-zA-Z0-9_-]{3,80}$/;
@@ -23,7 +24,11 @@ export const createLiveToken = async (req, res, next) => {
             return res.status(404).json({ success: false, message: "User not found" });
         }
 
-        const canHost = ["artist", "admin"].includes(user.role);
+        const liveSession = await LiveSession.findById(roomName);
+        const ownsLiveSession = liveSession
+            ? String(liveSession.artist_id) === String(user._id)
+            : user.role === "artist";
+        const canHost = user.role === "admin" || (user.role === "artist" && ownsLiveSession);
         const mode = requestedMode === "host" && canHost ? "host" : "viewer";
         const canPublish = mode === "host";
         const displayName = user.display_name || user.username || user.email || "Audtlist user";
