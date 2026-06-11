@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 import { Product } from '../models/product.model.js'
 import { Track } from '../models/track.model.js';
 import { User } from '../models/user.model.js';
-import { uploadAudioToCloudinary, uploadImageToCloudinary } from '../utils/cloudinaryUpload.js';
+import { resolvePreviewWindow, uploadAudioToCloudinary, uploadImageToCloudinary } from '../utils/cloudinaryUpload.js';
 import { formatProduct, formatPublicProduct } from '../utils/productFormatter.js'
 import { createUniqueProductSlug } from "../utils/productSlug.js";
 
@@ -317,6 +317,7 @@ export const createSingleProduct = async (req, res, next) => {
 
         await session.withTransaction(async () => {
             const durationSec = Math.ceil(audioUpload.duration);
+            const preview = resolvePreviewWindow(durationSec);
             const slug = await createUniqueProductSlug(title);
 
             const [track] = await Track.create(
@@ -329,6 +330,8 @@ export const createSingleProduct = async (req, res, next) => {
                             public_id: audioUpload.public_id,
                             url: audioUpload.secure_url,
                         },
+                        previewStartSec: preview.startSec,
+                        previewDurationSec: preview.durationSec,
                     },
                 ],
                 { session, ordered: true },
@@ -431,18 +434,25 @@ export const createAlbumProduct = async (req, res, next) => {
         await session.withTransaction(async () => {
             const slug = await createUniqueProductSlug(title);
 
-            const tracksData = audioUploads.map((audioUpload, index) => ({
-                artist: req.user.user_Id,
-                title: (requestedTrackTitles[index] || audioFiles[index].originalname
-                    .replace(/\.[^/.]+$/, '')
-                    .replace(/[_-]+/g, ' ')
-                    .trim()),
-                durationSec: Math.ceil(audioUpload.duration),
-                audioUrl: {
-                    public_id: audioUpload.public_id,
-                    url: audioUpload.secure_url,
-                },
-            }));
+            const tracksData = audioUploads.map((audioUpload, index) => {
+                const durationSec = Math.ceil(audioUpload.duration);
+                const preview = resolvePreviewWindow(durationSec);
+
+                return {
+                    artist: req.user.user_Id,
+                    title: (requestedTrackTitles[index] || audioFiles[index].originalname
+                        .replace(/\.[^/.]+$/, '')
+                        .replace(/[_-]+/g, ' ')
+                        .trim()),
+                    durationSec,
+                    audioUrl: {
+                        public_id: audioUpload.public_id,
+                        url: audioUpload.secure_url,
+                    },
+                    previewStartSec: preview.startSec,
+                    previewDurationSec: preview.durationSec,
+                };
+            });
 
             const tracks = await Track.create(tracksData, { session, ordered: true });
 

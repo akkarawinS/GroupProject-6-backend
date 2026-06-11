@@ -51,6 +51,7 @@ export const formatTrack = (track) => {
                 track.audioUrl.public_id,
                 track.previewStartSec,
                 track.previewDurationSec,
+                track.durationSec,
             )
             : null,
         audio_url: track.audioUrl,
@@ -108,6 +109,7 @@ export const formatPublicTrack = (track) => {
             track.audioUrl.public_id,
             track.previewStartSec,
             track.previewDurationSec,
+            track.durationSec,
           )
         : null,
       preview_start_sec: track.previewStartSec,
@@ -160,6 +162,7 @@ export const formatPublicTrack = (track) => {
             track.audioUrl.public_id,
             track.previewStartSec,
             track.previewDurationSec,
+            track.durationSec,
           )
         : null,
     };
