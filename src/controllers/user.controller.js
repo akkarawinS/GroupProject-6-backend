@@ -191,7 +191,14 @@ export const getUserProfile = async (req, res, next) => {
 
 export const updateUserProfile = async (req, res, next) => {
     try {
-        const { display_name, profile_picture, banner_picture, bio, location } = req.body || {};
+        const {
+            display_name,
+            profile_picture,
+            banner_picture,
+            bio,
+            location,
+            genre,
+        } = req.body || {};
         const update = {};
         const profileFile = req.files?.profile_picture?.[0];
         const bannerFile = req.files?.banner_picture?.[0];
@@ -236,6 +243,9 @@ export const updateUserProfile = async (req, res, next) => {
         };
 
         const updateUserInfo = await User.findByIdAndUpdate(req.user.user_Id, update, { returnDocument: "after", runValidators: true, });
+        if (!genre) {
+            update.genre = genre;
+        }
 
         return res.status(200).json({ success: true, data: updateUserInfo });
 
