@@ -4,14 +4,6 @@ import { registerChatSocket } from './chat.socket.js'
 import jwt from 'jsonwebtoken';
 import { User } from '../models/user.model.js';
 
-const getCookieValue = (cookieHeader, name) => {
-    return cookieHeader
-        ?.split(';')
-        .map((part) => part.trim())
-        .find((part) => part.startsWith(`${name}=`))
-        ?.split('=')[1];
-};
-
 export const setupSocket = (httpServer, allowedOrigins) => {
     const io = new Server(httpServer, {
         cors: {
@@ -21,7 +13,7 @@ export const setupSocket = (httpServer, allowedOrigins) => {
     });
 
     io.use(async (socket, next) => {
-        const token = getCookieValue(socket.handshake.headers.cookie, 'accessToken');
+        const token = socket.handshake.auth?.token;
 
         if (!token) {
             socket.user = null;

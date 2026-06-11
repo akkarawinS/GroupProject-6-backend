@@ -37,7 +37,25 @@ const isTransactionUnsupportedError = (err) => {
         || String(err?.message || '').includes('Transaction numbers are only allowed');
 };
 
-const buildOrderFromCart = async ({ userId, paymentMethod, shippingAddress, session = null }) => {
+const toNonNegativeNumber = (value, fieldName) => {
+    if (value === undefined || value === null || value === '') return 0;
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+        const err = new Error(`${fieldName} must be a non-negative number`);
+        err.status = 400;
+        throw err;
+    }
+    return parsed;
+};
+
+const buildOrderFromCart = async ({
+    userId,
+    paymentMethod,
+    shippingAddress,
+    requestedShippingFee = 0,
+    requestedDiscountAmount = 0,
+    session = null,
+}) => {
     const cartQuery = Cart.findOne({ user_id: userId, status: 'active' })
         .populate({
             path: 'items.product_id',
@@ -116,8 +134,9 @@ const buildOrderFromCart = async ({ userId, paymentMethod, shippingAddress, sess
         });
     }
 
-    const shippingFee = 0;
-    const discountAmount = 0;
+    const hasMerch = orderItems.some((item) => item.product_type === 'merch');
+    const shippingFee = hasMerch ? requestedShippingFee : 0;
+    const discountAmount = Math.min(requestedDiscountAmount, subtotal + shippingFee);
     const total = subtotal + shippingFee - discountAmount;
 
     const [order] = await Order.create([{
@@ -141,7 +160,7 @@ const buildOrderFromCart = async ({ userId, paymentMethod, shippingAddress, sess
 
 export const createOrder = async (req, res, next) => {
     const userId = req.user.user_Id;
-    const { payment_method, shipping_address } = req.body || {};
+    const { payment_method, shipping_address, shipping_fee, discount_amount } = req.body || {};
 
     if (!payment_method) {
         return res.status(400).json({ success: false, message: 'payment_method is required' });
@@ -151,6 +170,8 @@ export const createOrder = async (req, res, next) => {
 
     try {
         let order;
+        const requestedShippingFee = toNonNegativeNumber(shipping_fee, 'shipping_fee');
+        const requestedDiscountAmount = toNonNegativeNumber(discount_amount, 'discount_amount');
 
         try {
             await session.withTransaction(async () => {
@@ -158,6 +179,8 @@ export const createOrder = async (req, res, next) => {
                     userId,
                     paymentMethod: payment_method,
                     shippingAddress: shipping_address,
+                    requestedShippingFee,
+                    requestedDiscountAmount,
                     session,
                 });
             });
@@ -168,6 +191,8 @@ export const createOrder = async (req, res, next) => {
                 userId,
                 paymentMethod: payment_method,
                 shippingAddress: shipping_address,
+                requestedShippingFee,
+                requestedDiscountAmount,
             });
         }
 
@@ -211,7 +236,11 @@ export const getOrderById = async (req, res, next) => {
         }
 
         const query = { _id: orderId };
-        if (req.user.role !== 'admin') query.user_id = userId;
+        if (req.user.role === 'artist') {
+            query['items.artist_id'] = userId;
+        } else if (req.user.role !== 'admin') {
+            query.user_id = userId;
+        }
 
         const order = await Order.findOne(query)
             .populate('user_id', 'username email display_name')

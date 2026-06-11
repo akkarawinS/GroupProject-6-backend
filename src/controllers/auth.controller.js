@@ -1,6 +1,6 @@
 import { User } from '../models/user.model.js';
 import { comparePassword } from '../utils/comparePassword.js'
-import { clearAccessTokenCookie, setAccessTokenCookie } from '../utils/token.js';
+import { signAccessToken } from '../utils/token.js';
 
 
 export const fanRegister = async (req, res, next) => {
@@ -77,11 +77,12 @@ export const login = async (req, res, next) => {
             return res.status(401).json({ success: false, message: "Invalid email or password" })
         }
 
-        setAccessTokenCookie(res, { user_Id: findUser._id, role: findUser.role });
+        const token = signAccessToken({ user_Id: findUser._id, role: findUser.role });
 
         res.status(200).json({
             success: true,
             message: 'Logged in successfully',
+            token,
             user: {
                 _id: findUser._id,
                 username: findUser.username,
@@ -98,8 +99,6 @@ export const login = async (req, res, next) => {
 }
 
 export const logout = async (req, res, next) => {
-    clearAccessTokenCookie(res);
-
     return res.status(200).json({
         success: true,
         message: 'Logged out successfully',
